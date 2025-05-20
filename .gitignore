@@ -1,0 +1,10 @@
+# Ignore everything
+*
+
+# Except these files and folders (whitelist)
+!OT_utils.py
+!generate_data.py
+!visualizations.py
+!self_supervised_run_script.py
+!models
+!models/**
