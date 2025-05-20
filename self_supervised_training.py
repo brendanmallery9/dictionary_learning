@@ -768,7 +768,7 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
 
 
 
-
+'''
 def semi_supervised_pipeline_v3(model,embedded_data_list,
                                 outer_epoch_schedule,inner_epochs_pair,
                                 filter_ratio,
@@ -840,7 +840,7 @@ def semi_supervised_pipeline_v3(model,embedded_data_list,
     np.save(os.path.join(output_dir, 'basis_list.npy'), basis_list, allow_pickle=True)
     np.save(os.path.join(output_dir, 'supervised_classes.npy'), supervised_class_no_list, allow_pickle=True)
     return model,semi_supervised_list,basis_list,paths
-
+'''
 
 def semi_supervised_pipeline_v4(model,embedded_data_list,
                                 outer_epoch_schedule,inner_epochs_pair,

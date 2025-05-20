@@ -73,7 +73,7 @@ filename='training_runs/{}_{}_self_supervised_test'.format(date_str,dtype,lambda
 basis_update='in_data'
 lr=0.00001
 model,semi_supervised_list,basis_list,paths=semi_supervised_pipeline_v4(model,embedded_data_list,outer_epoch_schedule,inner_epochs,filter_ratio,rescale_gens,batch_size,QP_reg_schedule,dtype,filename,lr,basis_update)
+semi_supervised_plot_atoms(filename, model, 1000, dim,True,just_save=True)
+semi_supervised_plot_all(filename, model, 1000, dim,True,just_save=True)
 
-#model=FatFourLayer_Net_Multihead(d=2,no_heads=5,dropout_prob=0)
-#semi_supervised_plot_atoms(dir, model, 1000, 2,True)
-#semi_supervised_plot_all(dir, model, 2000, 2,True)
+
