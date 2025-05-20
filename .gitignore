@@ -8,5 +8,5 @@
 !self_supervised_run_script.py
 !models
 !models/**
-!datasets/0_4_8_pure_MNIST_multiple_bases.npy
+!datasets/0_4_8_pure_MNIST_center_zero.npy
 !self_supervised_training.py
