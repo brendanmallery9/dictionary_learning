@@ -70,8 +70,9 @@ filter_ratio=.3
 rescale_gens=False
 #filename='{}_{}_self_supervised_lambda_reg_{}'.format(date_str,dtype,lambda_reg)
 filename='training_runs/{}_{}_self_supervised_test'.format(date_str,dtype,lambda_reg)
-
-model,semi_supervised_list,basis_list,paths=semi_supervised_pipeline_v4(model,embedded_data_list,outer_epoch_schedule,inner_epochs,filter_ratio,rescale_gens,batch_size,QP_reg_schedule,dtype,filename,)
+basis_update='in_data'
+lr=0.00001
+model,semi_supervised_list,basis_list,paths=semi_supervised_pipeline_v4(model,embedded_data_list,outer_epoch_schedule,inner_epochs,filter_ratio,rescale_gens,batch_size,QP_reg_schedule,dtype,filename,lr,basis_update)
 
 #model=FatFourLayer_Net_Multihead(d=2,no_heads=5,dropout_prob=0)
 #semi_supervised_plot_atoms(dir, model, 1000, 2,True)
