@@ -1,4 +1,3 @@
-
 import ot
 import numpy as np
 import torch
@@ -22,7 +21,6 @@ class scored_data:
         self.embedded_data = embedded_data
         self.score=score
         self.regressed_coefficients=regressed_coefficients
-
 
 
 def divide_by_label(dataset):
@@ -76,7 +74,6 @@ def image_to_empirical(image:np.array):
             support += [[i /  nheight, j / nwidth]]
             mass += [image[i,j]]
     return measure(np.array(support), np.array(mass)/np.sum(mass))
-
 
 
 #SAMPLING

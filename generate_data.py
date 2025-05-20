@@ -63,7 +63,7 @@ def select_random_mnist(base_supp_size,generator_dirs,dim,n,base_shift_list):
     embedded_data_list_of_lists=[]
     random_numbers_list=[]
     for i in range(n):
-        random_numbers=random.sample(range(1,3000),3)
+        random_numbers=random.sample(range(1,3000),len(generator_dirs))
         random_numbers_list.append(random_numbers)
     for k in range(len(base_shift_list)):
         k_data=[]

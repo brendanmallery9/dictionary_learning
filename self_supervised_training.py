@@ -27,9 +27,9 @@ from models.multi_head_dir.multi_head_model import *
 from models.multi_head_dir.multi_head_training import *
 from visualizations import *
 import gc
-from self_supervised_training import *
 from generate_data import *
 import math
+import qpth
 
 class semi_supervised_embedded_data:
     def __init__(self,embedded_data,basis_dict):
@@ -354,25 +354,27 @@ def batch_solve_for_coefficients_qpth(model,batch_base_points,batch_mapping,supe
             tensor_map=output[:,i,:,:]-batch_mapping
             displacement_tensor.append(tensor_map)
     displacement_tensor=torch.stack(displacement_tensor,dim=1) #displacement_tensor: (batch_size,no_heads,supp_size,dim)
-    QP=build_QP_v2(displacement_tensor)+QP_reg*torch.eye(no_heads).expand(batch_size, no_heads, no_heads)
-    QP=QP.to('cpu')
+    eye = torch.eye(no_heads, device=device).expand(batch_size, no_heads, no_heads)
+    QP = build_QP_v2(displacement_tensor) + QP_reg * eye
+    QP=QP.to(device)
 
-    lin_term = torch.zeros(batch_size, no_heads, device='cpu') #QP linear term = 0
+    lin_term = torch.zeros(batch_size, no_heads, device=device) #QP linear term = 0
 
     #nonnegativity constraints
-    nonneg = -torch.eye(no_heads, device='cpu').unsqueeze(0).expand(batch_size, no_heads, no_heads)
-    zero_vec = torch.zeros(batch_size, no_heads, device='cpu')
+    nonneg = -torch.eye(no_heads, device=device).unsqueeze(0).expand(batch_size, no_heads, no_heads)
+    zero_vec = torch.zeros(batch_size, no_heads, device=device)
 
     #normalization constraints
-    norm = torch.ones(batch_size, 1, no_heads, device='cpu')
-    ones_vec = torch.ones(batch_size, 1, device='cpu')
+    norm = torch.ones(batch_size, 1, no_heads, device=device)
+    ones_vec = torch.ones(batch_size, 1, device=device)
 
     solver = qpth.qp.QPFunction()
 
     #calls solver(QP,p,nonneg,zero_vec,norm,ones_vec)
     #solves min_v v^T QP v with v\geq 0 and \sum v=1
 
-    v = solver(QP, lin_term, nonneg, zero_vec, norm, ones_vec)  # shape: (b, n)
+    v = solver(QP, lin_term, nonneg, zero_vec, norm, ones_vec)
+    v = v.clamp(min=1e-7)
     return v
 
 def batch_solve_for_coefficients_cvxpy(model, batch_base_points, batch_mapping, supervised_class_nos, batch_basis, QP_reg, device):
@@ -413,6 +415,7 @@ def batch_solve_for_coefficients_cvxpy(model, batch_base_points, batch_mapping, 
         v = cp.Variable(no_heads)
         objective = cp.Minimize(0.5 * cp.quad_form(v, Q))
         constraints = [v >= 0, cp.sum(v) == 1]
+        #constraints = [v >= 0]
         problem = cp.Problem(objective, constraints)
         problem.solve()
 
@@ -642,7 +645,6 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
     #save_increment: int
     #squash factor: int. if squash_factor < 0, no squashing. if squash_factor > 0, constraints solutions to ball of radius squash_factor
     #lr: float
-
     if len(supervised_class_nos)>0:
         for head_idx in supervised_class_nos:
             print(f"Freezing head {head_idx}")
@@ -653,9 +655,7 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
         model.freeze_heads(supervised_class_nos)
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model.to(device)
-
     tensorized_data=tensor_ss_data(semi_supervised_data)
-
     #calculate variance of data
     norm_vec = []
     mean_vec = []
@@ -670,11 +670,8 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
     # Final statistics
     avg_norm = torch.stack(norm_vec).mean().to(device)
     avg_mean = torch.stack(mean_vec).mean(dim=0).to(device)
-
     dataset=CustomDataset(tensorized_data,dtype)
-
     base_supp_size=dataset[0].base_points.shape[0]
-
     no_batches=int(np.ceil(len(dataset)/batch_size))
     no_heads=model.no_heads
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -682,19 +679,15 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
     os.makedirs('{}/Trial_{:.4f}'.format(filename,time_now), exist_ok=True)  
     counter=0
     inner_loss=0
-
     for outer_epoch in range(outer_epochs):
         dataset.permute()
         for batch in range(no_batches):
             start=time.time()
             batch_data = dataset[batch_size * batch : batch_size * (batch + 1)]
-
             #base_point_tensor has shape (batch_size,support_size,dim)
             #mapping_tensor has shape (batch_size,support_size,dim)
-
             base_point_tensor = torch.stack([d.base_points for d in batch_data]).to(device)
             mapping_tensor = torch.stack([d.mapping for d in batch_data]).to(device)
-
             #semi_supervised_basis: tensor of shape (batch_size,support_size,no_heads,dim)
             semi_supervised_basis=torch.zeros((len(batch_data),base_point_tensor.shape[1],no_heads,base_point_tensor.shape[2]),dtype=torch.float32,device=device)
             #populates semi_supervised_basis with maps from the supervised generators
@@ -703,16 +696,13 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
                     temp_j = torch.stack([d.basis_dict[j] for d in batch_data])
                     semi_supervised_basis[:, :, j, :] = temp_j.to(device)
     #        semi_supervised_basis=torch.tensor(semi_supervised_basis).to(device)
-            
             for i in range(inner_epochs_pair[0]):
                 inner_loss=0
-
                 #input_reshaped flattens base_point_tensor to shape (batch_size*support_size,dim)
                 input_reshaped = base_point_tensor.reshape(-1, base_point_tensor.shape[-1])
                 #output_reshaped: tensor of shape (batch_size*support_size,no_heads,dim)
                 #output_reshaped = model(input_reshaped).to(device)
                 QP_reg=QP_reg_schedule(outer_epoch)
-                
                 coefficients_tensor=batch_solve_for_coefficients_cvxpy(model,base_point_tensor,mapping_tensor,supervised_class_nos,semi_supervised_basis,QP_reg,device)
                 #v2 routine
                # for j in range(len(base_point_tensor)):
@@ -746,7 +736,6 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
             print(f'Epoch [{outer_epoch+1}/{outer_epochs}], Batch [{batch+1}/{no_batches}], counter {counter}, Avg Inner Loss: {inner_loss/inner_epoch_count:.8f}')
             end=time.time()
             print(end-start)
-
     end_time=time.time()
     save_trial('self_supervised.csv',
                dtype=dtype,
@@ -765,82 +754,6 @@ def semi_supervised_multi_head_train_v3(model,semi_supervised_data,outer_epochs,
             
     torch.save(model.state_dict(), '{}/Trial_{:.4f}/final_multi_head_model_{}.pt'.format(filename,time_now,counter))
     return '{}/Trial_{:.4f}/final_multi_head_model_{}.pt'.format(filename,time_now,counter)
-
-
-
-'''
-def semi_supervised_pipeline_v3(model,embedded_data_list,
-                                outer_epoch_schedule,inner_epochs_pair,
-                                filter_ratio,
-                                squash_factor,
-                                batch_size,QP_reg_schedule,
-                                dtype,filename,lr):
-    #model
-    #embedded_data_list: list of embedded_data objects
-    #outer_epoch_schedule: list of integers (should be length=number of heads)
-    #inner_epochs pair: list of two integers
-    #dtype: string
-    #filename:string
-    basis_list=[]
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    supervised_class_no_list=[]
-    semi_supervised_list=[]
-    model_no_heads=model.no_heads
-    for i in embedded_data_list:
-        semi_supervised_list.append(semi_supervised_embedded_data(i,{}))
-    paths=[]
-    os.makedirs(filename, exist_ok=True)
-
-    if len(outer_epoch_schedule)>model_no_heads:
-        raise RuntimeError('Error: outer_epoch_schedule has more than no_heads elements')
-    
-    if outer_epoch_schedule[0]>0:
-        output_path=semi_supervised_multi_head_train_v3(model,semi_supervised_list,outer_epochs=outer_epoch_schedule[0],inner_epochs_pair=inner_epochs_pair,
-                                         QP_reg_schedule=QP_reg_schedule,batch_size=batch_size,supervised_class_nos=supervised_class_no_list,save_increment=100000,atom_reg=0,dtype=dtype,filename=filename,squash_factor=squash_factor,lr=lr)
-
-        paths.append(output_path)
-    else:
-        time_now = time.time()
-        trial_dir = '{}/Trial_{:.4f}'.format(filename, time_now)
-        os.makedirs(trial_dir, exist_ok=True)
-        torch.save(model.state_dict(), f'{trial_dir}/multi_head_model_0.pt')
-        paths.append('{}/multi_head_model_{}.pt'.format(trial_dir,0))
-
-    for i in range(len(outer_epoch_schedule[1:])+1):
-        torch.cuda.empty_cache()
-        gc.collect()
-        model.to('cpu')
-        method='OT'
-        new_basis,score_dict=learn_generators(embedded_data_list,model,'Nearest_Neighbor',supervised_class_no_list,method=method)
-        basis_list.append(new_basis)
-        filtered_score_dict = {k: v for k, v in score_dict.items() if k not in supervised_class_no_list}
-        min_index = min(filtered_score_dict, key=filtered_score_dict.get)
-        print('Supervising head_no:',min_index)
-        semi_supervised_list=update_semi_supervised_embedding(semi_supervised_list,new_basis[min_index].mapping,min_index)
-        supervised_class_no_list.append(min_index)
-        print('Supervised head_no list:',supervised_class_no_list)
-        model.to(device)
-
-        if model_no_heads==len(supervised_class_no_list):
-            print('All classes supervised')
-            break
-        else:  
-            if outer_epoch_schedule[1:][i]>0:
-                print('Thinning data set. Removing {} elements'.format(filter_ratio*len(semi_supervised_list)))
-                semi_supervised_list=filter_by_proj(semi_supervised_list,min_index,filter_ratio)
-            print('Data set size:',len(semi_supervised_list))
-            output_path=semi_supervised_multi_head_train_v3(model,semi_supervised_list,outer_epochs=outer_epoch_schedule[1:][i],inner_epochs_pair=inner_epochs_pair,
-                                    QP_reg_schedule=QP_reg_schedule,batch_size=batch_size,supervised_class_nos=supervised_class_no_list,save_increment=100000,atom_reg=0,dtype=dtype,filename=filename,squash_factor=squash_factor,lr=lr)
-
-            paths.append(output_path)
-    
-    output_dir=f'{filename}'
-    os.makedirs(output_dir, exist_ok=True)
-    np.save(os.path.join(output_dir, 'paths.npy'), paths, allow_pickle=True)
-    np.save(os.path.join(output_dir, 'basis_list.npy'), basis_list, allow_pickle=True)
-    np.save(os.path.join(output_dir, 'supervised_classes.npy'), supervised_class_no_list, allow_pickle=True)
-    return model,semi_supervised_list,basis_list,paths
-'''
 
 def semi_supervised_pipeline_v4(model,embedded_data_list,
                                 outer_epoch_schedule,inner_epochs_pair,
@@ -925,3 +838,77 @@ def semi_supervised_pipeline_v4(model,embedded_data_list,
     np.save(os.path.join(output_dir, 'basis_list.npy'), basis_list, allow_pickle=True)
     np.save(os.path.join(output_dir, 'supervised_classes.npy'), supervised_class_no_list, allow_pickle=True)
     return model,semi_supervised_list,basis_list,paths
+
+'''
+def semi_supervised_pipeline_v3(model,embedded_data_list,
+                                outer_epoch_schedule,inner_epochs_pair,
+                                filter_ratio,
+                                squash_factor,
+                                batch_size,QP_reg_schedule,
+                                dtype,filename,lr):
+    #model
+    #embedded_data_list: list of embedded_data objects
+    #outer_epoch_schedule: list of integers (should be length=number of heads)
+    #inner_epochs pair: list of two integers
+    #dtype: string
+    #filename:string
+    basis_list=[]
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    supervised_class_no_list=[]
+    semi_supervised_list=[]
+    model_no_heads=model.no_heads
+    for i in embedded_data_list:
+        semi_supervised_list.append(semi_supervised_embedded_data(i,{}))
+    paths=[]
+    os.makedirs(filename, exist_ok=True)
+
+    if len(outer_epoch_schedule)>model_no_heads:
+        raise RuntimeError('Error: outer_epoch_schedule has more than no_heads elements')
+    
+    if outer_epoch_schedule[0]>0:
+        output_path=semi_supervised_multi_head_train_v3(model,semi_supervised_list,outer_epochs=outer_epoch_schedule[0],inner_epochs_pair=inner_epochs_pair,
+                                         QP_reg_schedule=QP_reg_schedule,batch_size=batch_size,supervised_class_nos=supervised_class_no_list,save_increment=100000,atom_reg=0,dtype=dtype,filename=filename,squash_factor=squash_factor,lr=lr)
+
+        paths.append(output_path)
+    else:
+        time_now = time.time()
+        trial_dir = '{}/Trial_{:.4f}'.format(filename, time_now)
+        os.makedirs(trial_dir, exist_ok=True)
+        torch.save(model.state_dict(), f'{trial_dir}/multi_head_model_0.pt')
+        paths.append('{}/multi_head_model_{}.pt'.format(trial_dir,0))
+
+    for i in range(len(outer_epoch_schedule[1:])+1):
+        torch.cuda.empty_cache()
+        gc.collect()
+        model.to('cpu')
+        method='OT'
+        new_basis,score_dict=learn_generators(embedded_data_list,model,'Nearest_Neighbor',supervised_class_no_list,method=method)
+        basis_list.append(new_basis)
+        filtered_score_dict = {k: v for k, v in score_dict.items() if k not in supervised_class_no_list}
+        min_index = min(filtered_score_dict, key=filtered_score_dict.get)
+        print('Supervising head_no:',min_index)
+        semi_supervised_list=update_semi_supervised_embedding(semi_supervised_list,new_basis[min_index].mapping,min_index)
+        supervised_class_no_list.append(min_index)
+        print('Supervised head_no list:',supervised_class_no_list)
+        model.to(device)
+
+        if model_no_heads==len(supervised_class_no_list):
+            print('All classes supervised')
+            break
+        else:  
+            if outer_epoch_schedule[1:][i]>0:
+                print('Thinning data set. Removing {} elements'.format(filter_ratio*len(semi_supervised_list)))
+                semi_supervised_list=filter_by_proj(semi_supervised_list,min_index,filter_ratio)
+            print('Data set size:',len(semi_supervised_list))
+            output_path=semi_supervised_multi_head_train_v3(model,semi_supervised_list,outer_epochs=outer_epoch_schedule[1:][i],inner_epochs_pair=inner_epochs_pair,
+                                    QP_reg_schedule=QP_reg_schedule,batch_size=batch_size,supervised_class_nos=supervised_class_no_list,save_increment=100000,atom_reg=0,dtype=dtype,filename=filename,squash_factor=squash_factor,lr=lr)
+
+            paths.append(output_path)
+    
+    output_dir=f'{filename}'
+    os.makedirs(output_dir, exist_ok=True)
+    np.save(os.path.join(output_dir, 'paths.npy'), paths, allow_pickle=True)
+    np.save(os.path.join(output_dir, 'basis_list.npy'), basis_list, allow_pickle=True)
+    np.save(os.path.join(output_dir, 'supervised_classes.npy'), supervised_class_no_list, allow_pickle=True)
+    return model,semi_supervised_list,basis_list,paths
+'''
