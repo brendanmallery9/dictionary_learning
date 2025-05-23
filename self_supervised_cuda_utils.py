@@ -69,83 +69,6 @@ class CustomDataset(Dataset):
 # The magic of DPP is that each time loss.backwards() is called on each of the GPUs, the gradients across all models are averaged, and then each process applies optimizer.step() with the averaged gradient
 # So there is no independence between the different copies of the model on each of the GPUs
 
-def multiprocess_setup(rank, world_size):
-    #hardcoding the ports used to coordinate the procsses
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'  
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-    device = torch.device(f"cuda:{rank}")
-    return device
-
-def initialize_model(device, model_class,model_init_args,model_state_dict,rank):
-    model = model_class(*model_init_args).to(device)
-    if model_state_dict is not None:
-        model.load_state_dict(model_state_dict)
-    model = DDP(model, device_ids=[rank])
-    return model
-
-def DDP_wrapper(rank,
-                world_size,
-                model_class,
-                model_state_dict,
-                model_init_args,
-                base_point_tensor,
-                dataset,
-                batch_size,
-                outer_epochs,
-                inner_epochs_pair,
-                QP_reg_schedule,
-                save_increment,
-                dtype,
-                filename,
-                lambda_reg,variance_threshold,
-                lr):
-    device = multiprocess_setup(rank, world_size)
-    model = initialize_model(device, model_class,model_init_args, model_state_dict, rank)
-
-    #Distributed Sampler provides a method of splitting and permuting the data in DataLoader across GPUs
-    #By calling dataloader.sampler.set_epoch(i) for some number i, we fix the random seed so that all the processes are coordinated in their splitting and permuting
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=lambda x: x)
-
-    multi_head_train_cuda(model, dataloader,base_point_tensor, outer_epochs, inner_epochs_pair,
-                                          QP_reg_schedule, batch_size,
-                                          save_increment, dtype, filename, lambda_reg,variance_threshold, lr,device)
-    dist.destroy_process_group()
-
-
-def spawn_train_DDP(model_class, model_state_dict,model_init_args,
-                    mapping_tensor,
-                    world_size,
-                    batch_size,
-                    outer_epochs,
-                    inner_epochs_pair,
-                    QP_reg_schedule,
-                    save_increment,
-                    dtype,
-                    filename,
-                    lr):
-    dataset = CustomDataset(mapping_tensor, dtype=dtype)
-    #the first argument of mp.spawn is always rank, so it doesn't have to be added here explicitly
-    mp.spawn(DDP_wrapper,
-             args=(world_size,
-                   model_class,
-                   model_state_dict,
-                   model_init_args,
-                   dataset,
-                   batch_size,
-                   outer_epochs,
-                   inner_epochs_pair,
-                   QP_reg_schedule,
-                   save_increment,
-                   dtype,
-                   filename,
-                   lr),
-             nprocs=world_size,
-             join=True)
-
-
 # version 1 assumes that the input data into the model is a fixed base point tensor
 # side note: At a high level I like that the mdoel takes in the base point tensor even though this is fixed across training
 # that way, you can do things like query the model on an individual data point
@@ -303,20 +226,107 @@ def multi_head_train_cuda(model, dataloader,base_point_tensor, outer_epochs, inn
     if torch.distributed.get_rank() == 0:
         torch.save(model.module.state_dict(), '{}/Trial_{:.4f}/final_multi_head_model_{}.pt'.format(filename,time_now,counter))
 
+
+def multiprocess_setup(rank, world_size):
+    #hardcoding the ports used to coordinate the procsses
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'  
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+    device = torch.device(f"cuda:{rank}")
+    return device
+
+def initialize_model(device, model_class,model_init_args,model_state_dict,rank):
+    model = model_class(*model_init_args).to(device)
+    if model_state_dict is not None:
+        model.load_state_dict(model_state_dict)
+    model = DDP(model, device_ids=[rank])
+    return model
+
+def DDP_wrapper(rank,
+                world_size,
+                model_class,
+                model_state_dict,
+                model_init_args,
+                base_point_tensor,
+                dataset,
+                batch_size,
+                outer_epochs,
+                inner_epochs_pair,
+                QP_reg_schedule,
+                save_increment,
+                dtype,
+                filename,
+                lambda_reg,variance_threshold,
+                lr):
+    device = multiprocess_setup(rank, world_size)
+    model = initialize_model(device, model_class,model_init_args, model_state_dict, rank)
+
+    #Distributed Sampler provides a method of splitting and permuting the data in DataLoader across GPUs
+    #By calling dataloader.sampler.set_epoch(i) for some number i, we fix the random seed so that all the processes are coordinated in their splitting and permuting
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=lambda x: x)
+
+    multi_head_train_cuda(model, dataloader,base_point_tensor, outer_epochs, inner_epochs_pair,
+                                          QP_reg_schedule, batch_size,
+                                          save_increment, dtype, filename, lambda_reg,variance_threshold, lr,device)
+    dist.destroy_process_group()
+
+
+def spawn_train_DDP(model_class, model_state_dict,model_init_args,
+                    mapping_tensor,
+                    base_point_tensor,
+                    world_size,
+                    batch_size,
+                    outer_epochs,
+                    inner_epochs_pair,
+                    QP_reg_schedule,
+                    save_increment,
+                    dtype,
+                    filename,
+                    lambda_reg,
+                    variance_threshold,
+                    lr):
+    dataset = CustomDataset(mapping_tensor, dtype=dtype)
+    #the first argument of mp.spawn is always rank, so it doesn't have to be added here explicitly
+    mp.spawn(DDP_wrapper,
+             args=(world_size,
+                    model_class,
+                    model_state_dict,
+                    model_init_args,
+                    base_point_tensor,
+                    dataset,
+                    batch_size,
+                    outer_epochs,
+                    inner_epochs_pair,
+                    QP_reg_schedule,
+                    save_increment,
+                    dtype,
+                    filename,
+                    lambda_reg,variance_threshold,
+                    lr),
+             nprocs=world_size,
+             join=True)
+
+
+
+
+
 def run_ddp_training(
-    model_class,
-    model_init_args,
-    model_state_dict,
-    mapping_tensor,
-    world_size,
-    batch_size,
-    outer_epochs,
-    inner_epochs_pair,
-    QP_reg_schedule,
-    save_increment,
-    dtype,
-    filename,
-    lr):
+    model_class, model_state_dict,model_init_args,
+                    mapping_tensor,
+                    base_point_tensor,
+                    world_size,
+                    batch_size,
+                    outer_epochs,
+                    inner_epochs_pair,
+                    QP_reg_schedule,
+                    save_increment,
+                    dtype,
+                    filename,
+                    lambda_reg,
+                    variance_threshold,
+                    lr):
     """
     Launches DDP training with given configuration.
     
@@ -344,6 +354,7 @@ def run_ddp_training(
         model_state_dict=model_state_dict,
         model_init_args=model_init_args,
         mapping_tensor=mapping_tensor,
+        base_point_tensor=base_point_tensor,
         world_size=world_size,
         batch_size=batch_size,
         outer_epochs=outer_epochs,
@@ -352,5 +363,7 @@ def run_ddp_training(
         save_increment=save_increment,
         dtype=dtype,
         filename=filename,
-        lr=lr
+        lr=lr,
+        lambda_reg=lambda_reg,
+        variance_threshold=variance_threshold
     )

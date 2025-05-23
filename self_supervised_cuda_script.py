@@ -69,6 +69,8 @@ def parse_args():
     parser.add_argument('--save_increment', type=int, default=100000)
     parser.add_argument('--dtype', type=str, default='MNIST')
     parser.add_argument('--filename', type=str, default=f'training_runs/{date_str}_runs')
+    parser.add_argument('--lambda_reg', type=float, default=0.0)
+    parser.add_argument('--variance_threshold', type=float, default=100.0)
 
     # Add parameters for reg_schedule if you want to customize from CLI
     parser.add_argument('--reg_base_value', type=float, default=0.0)
@@ -92,27 +94,24 @@ def main():
 
     dtype = args.dtype  # Use CLI argument
     model_class = FatFourLayer_Net_Multihead
-    model_init_args = {
-        'd': dim,
-        'no_heads': no_heads,
-        'dropout_prob': dropout_prob
-    }
+    model_init_args = (dim, no_heads, dropout_prob)
     model_state_dict = None
 
     # Load mapping tensor with error handling
     try:
         mapping_tensor = torch.load(args.mapping_path)
+        base_point_tensor=torch.load('datasets/tensor_data/base_point_tensor.pt')
     except Exception as e:
         print(f"Error loading mapping tensor from {args.mapping_path}: {e}")
         return
-
     inner_epochs_pair = (args.inner_epochs_1, args.inner_epochs_2)
 
     run_ddp_training(
         model_class=model_class,
-        model_init_args=model_init_args,
         model_state_dict=model_state_dict,
+        model_init_args=model_init_args,
         mapping_tensor=mapping_tensor,
+        base_point_tensor=base_point_tensor,
         world_size=args.world_size,
         batch_size=args.batch_size,
         outer_epochs=args.outer_epochs,
@@ -121,7 +120,9 @@ def main():
         save_increment=args.save_increment,
         dtype=dtype,
         filename=args.filename,
-        lr=args.lr
+        lr=args.lr,
+        variance_threshold=args.variance_threshold,
+        lambda_reg=args.lambda_reg
     )
     save_args(args, args.filename)
 
@@ -129,7 +130,7 @@ if __name__ == "__main__":
     main()
 
 #EXAMPLE USAGE:
-#torchrun --nproc_per_node=4 self_supervised_cuda_script.py \
+#python3 self_supervised_cuda_script.py \
 #  --world_size 4 \
 #  --batch_size 256 \
 #  --outer_epochs 30 \
