@@ -111,3 +111,18 @@ def generate_centered_convex_combination_random_reference_tensor(base_supp_size,
 #EXAMPLE USAGE:
 #generator_dirs=['datasets/MNIST_data/0/','datasets/MNIST_data/4/','datasets/MNIST_data/8/']
 #embedded_data_list_random_reference=generate_convex_combination_random_reference(400,generator_dirs,2,3000)
+
+def generate_centered_convex_combination_tensor(base_measure,generators):
+    m=len(generators)
+    random_coeff=sample_from_simplex(m-1)
+    scaled_map_array=[]
+    for j in range(m):
+       # gen=measure(center_array(generators[j].points),generators[j].masses)
+        gen=measure(generators[j].points,generators[j].masses)
+        mapping=wass_map(base_measure,gen,'emd')
+        scaled_mapping=np.array(random_coeff[j]*mapping)
+        scaled_map_array.append(scaled_mapping)
+    combined_map=np.sum(scaled_map_array,axis=0)
+    base_measure=measure(torch.tensor(base_measure.points,dtype=torch.float32),torch.tensor(base_measure.masses,dtype=torch.float32))
+    return embedded_data(torch.tensor(combined_map,dtype=torch.float32),0,[],base_measure,random_coeff)
+
