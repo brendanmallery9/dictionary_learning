@@ -47,6 +47,14 @@ from self_supervised_cuda_utils import *
 import argparse
 
 
+def save_args(args, directory):
+    os.makedirs(directory, exist_ok=True)
+    args_file = os.path.join(directory, "training_args.csv")
+    with open(args_file, mode='w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Argument', 'Value'])
+        for arg, val in vars(args).items():
+            writer.writerow([arg, val])
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run DDP training.")
@@ -67,7 +75,6 @@ def parse_args():
     parser.add_argument('--reg_scale_factor', type=float, default=1.0)
     parser.add_argument('--reg_min_i', type=int, default=0)
 
-    # Optional: mapping tensor file path
     parser.add_argument('--mapping_path', type=str, default='LBCM_0_4_8_mappings.pt')
 
     return parser.parse_args()
@@ -116,6 +123,19 @@ def main():
         filename=args.filename,
         lr=args.lr
     )
+    save_args(args, args.filename)
 
 if __name__ == "__main__":
     main()
+
+#EXAMPLE USAGE:
+#torchrun --nproc_per_node=4 self_supervised_cuda_script.py \
+#  --world_size 4 \
+#  --batch_size 256 \
+#  --outer_epochs 30 \
+#  --inner_epochs_1 5 \
+#  --inner_epochs_2 10 \
+#  --lr 1e-5 \
+#  --save_increment 100000 \
+#  --dtype MNIST \
+#  --mapping_path LBCM_0_4_8_mappings.pt

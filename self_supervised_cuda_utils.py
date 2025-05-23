@@ -122,7 +122,6 @@ def spawn_train_DDP(model_class, model_state_dict,model_init_args,
                     outer_epochs,
                     inner_epochs_pair,
                     QP_reg_schedule,
-                    supervised_class_nos,
                     save_increment,
                     dtype,
                     filename,
@@ -139,7 +138,6 @@ def spawn_train_DDP(model_class, model_state_dict,model_init_args,
                    outer_epochs,
                    inner_epochs_pair,
                    QP_reg_schedule,
-                   supervised_class_nos,
                    save_increment,
                    dtype,
                    filename,
@@ -154,7 +152,6 @@ def spawn_train_DDP(model_class, model_state_dict,model_init_args,
 def cuda_solve_for_coefficients_qpth_v1(model,base_point_tensor,batch_data,QP_reg,device):
     #base_point_tensor: (supp_size,dim)
     #batch_mapping: (batch_size,supp_size,dim)
-    #supervised_class_nos: list of supervised class numbers
     #batch_basis: (batch_size,supp_size,no_heads,dim)
     with torch.no_grad():
         output=model(base_point_tensor) #output: (no_heads,supp_size,dim)
@@ -316,7 +313,6 @@ def run_ddp_training(
     outer_epochs,
     inner_epochs_pair,
     QP_reg_schedule,
-    supervised_class_nos,
     save_increment,
     dtype,
     filename,
@@ -334,7 +330,6 @@ def run_ddp_training(
         outer_epochs: number of outer epochs
         inner_epochs_pair: tuple (int_1, int_2) for nested training loops
         QP_reg_schedule: a callable taking outer_epoch and returning a float
-        supervised_class_nos: regularization parameter to pass (misnamed — should be lambda_reg)
         save_increment: how often to save the model (in inner steps)
         dtype: torch.float32, torch.float64, etc.
         filename: folder path where models and logs are saved
@@ -354,7 +349,6 @@ def run_ddp_training(
         outer_epochs=outer_epochs,
         inner_epochs_pair=inner_epochs_pair,
         QP_reg_schedule=QP_reg_schedule,
-        supervised_class_nos=supervised_class_nos,
         save_increment=save_increment,
         dtype=dtype,
         filename=filename,
