@@ -126,7 +126,6 @@ def spawn_train_DDP(model_class, model_state_dict,model_init_args,
                     save_increment,
                     dtype,
                     filename,
-                    squash_factor,
                     lr):
     dataset = CustomDataset(mapping_tensor, dtype=dtype)
     #the first argument of mp.spawn is always rank, so it doesn't have to be added here explicitly
@@ -144,7 +143,6 @@ def spawn_train_DDP(model_class, model_state_dict,model_init_args,
                    save_increment,
                    dtype,
                    filename,
-                   squash_factor,
                    lr),
              nprocs=world_size,
              join=True)
@@ -250,7 +248,6 @@ def multi_head_train_cuda(model, dataloader,base_point_tensor, outer_epochs, inn
     #batch_size: int
     #dim: int
     #save_increment: int
-    #squash factor: int. if squash_factor < 0, no squashing. if squash_factor > 0, constraints solutions to ball of radius squash_factor
     #lr: float    
     no_batches=len(dataloader)
     no_heads=model.no_heads
@@ -323,7 +320,6 @@ def run_ddp_training(
     save_increment,
     dtype,
     filename,
-    squash_factor,
     lr):
     """
     Launches DDP training with given configuration.
@@ -342,7 +338,6 @@ def run_ddp_training(
         save_increment: how often to save the model (in inner steps)
         dtype: torch.float32, torch.float64, etc.
         filename: folder path where models and logs are saved
-        squash_factor: variance threshold for regularization
         lr: learning rate
     """
 
@@ -363,6 +358,5 @@ def run_ddp_training(
         save_increment=save_increment,
         dtype=dtype,
         filename=filename,
-        squash_factor=squash_factor,
         lr=lr
     )
