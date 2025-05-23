@@ -8,8 +8,9 @@
 !self_supervised_run_script.py
 !models
 !models/**
-!datasets
-!datasets/0_4_8_pure_MNIST_center_zero.npy
 !self_supervised_training.py
+!self_supervised_cuda_utils.py
+!self_supervised_cuda_script.py
+!datasets
 !datasets/tensor_data
 !datasets/tensor_data/**
