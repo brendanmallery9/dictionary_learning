@@ -25,7 +25,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torchvision.transforms as transforms
 import torchvision.utils as utils
 
-import tensorflow as tf
 import cvxpy as cp
 import qpth
 
@@ -130,13 +129,15 @@ if __name__ == "__main__":
     main()
 
 #EXAMPLE USAGE:
-#python3 self_supervised_cuda_script.py \
-#  --world_size 4 \
-#  --batch_size 256 \
-#  --outer_epochs 30 \
-#  --inner_epochs_1 5 \
-#  --inner_epochs_2 10 \
-#  --lr 1e-5 \
-#  --save_increment 100000 \
-#  --dtype MNIST \
-#  --mapping_path LBCM_0_4_8_mappings.pt
+'''
+python3 self_supervised_cuda_script.py \
+  --world_size 4 \
+  --batch_size 256 \
+  --outer_epochs 30 \
+  --inner_epochs_1 5 \
+  --inner_epochs_2 10 \
+  --lr 1e-5 \
+  --save_increment 100000 \
+  --dtype MNIST \
+  --mapping_path LBCM_0_4_8_mappings.pt
+'''

@@ -16,7 +16,6 @@ from scipy import stats, linalg
 from sklearn.metrics.pairwise import euclidean_distances
 from scipy.optimize import fsolve, least_squares, minimize, curve_fit
 import cvxpy as cp
-import tensorflow as tf
 import scipy as sp
 from OT_utils import *
 from joblib import Parallel, delayed
