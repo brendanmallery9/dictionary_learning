@@ -76,7 +76,7 @@ def parse_args():
     parser.add_argument('--reg_scale_factor', type=float, default=1.0)
     parser.add_argument('--reg_min_i', type=int, default=0)
 
-    parser.add_argument('--mapping_path', type=str, default='LBCM_0_4_8_mappings.pt')
+    parser.add_argument('--mapping_path', type=str, default='datasets/tensor_data/LBCM_0_4_8_mappings.pt')
 
     return parser.parse_args()
 
@@ -139,5 +139,5 @@ python3 self_supervised_cuda_script.py \
   --lr 1e-5 \
   --save_increment 100000 \
   --dtype MNIST \
-  --mapping_path LBCM_0_4_8_mappings.pt
+  --mapping_path datasets/tensor_data/LBCM_0_4_8_mappings.pt
 '''
