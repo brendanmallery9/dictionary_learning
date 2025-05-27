@@ -28,11 +28,6 @@ import torchvision.utils as utils
 import cvxpy as cp
 import qpth
 
-import plotly.graph_objects as go
-import plotly.express as px
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-
 from joblib import Parallel, delayed
 
 from OT_utils import *
