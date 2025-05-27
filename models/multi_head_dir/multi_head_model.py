@@ -503,25 +503,26 @@ class SixLayer_Net_Multihead(nn.Module):
         super(SixLayer_Net_Multihead, self).__init__()
 
         self.no_heads = no_heads
+        self.base_supp_size=base_supp_size
         
         self.layer1 = nn.Linear(d, 256)
-        self.bn1 = nn.BatchNorm1d(base_supp_size)
+        self.bn1 = nn.BatchNorm1d(256)
         self.dropout1 = nn.Dropout(p=dropout_prob)
         
         self.layer2 = nn.Linear(256, 1024)
-        self.bn2 = nn.BatchNorm1d(base_supp_size)
+        self.bn2 = nn.BatchNorm1d(1024)
         self.dropout2 = nn.Dropout(p=dropout_prob)
 
         self.layer3 = nn.Linear(1024, 1024)
-        self.bn3 = nn.BatchNorm1d(base_supp_size)
+        self.bn3 = nn.BatchNorm1d(1024)
         self.dropout3 = nn.Dropout(p=dropout_prob)
 
         self.layer4 = nn.Linear(1024, 512)
-        self.bn4 = nn.BatchNorm1d(base_supp_size)
+        self.bn4 = nn.BatchNorm1d(512)
         self.dropout4 = nn.Dropout(p=dropout_prob)
 
         self.layer5 = nn.Linear(512, 256)
-        self.bn5 = nn.BatchNorm1d(base_supp_size)
+        self.bn5 = nn.BatchNorm1d(256)
         self.dropout5 = nn.Dropout(p=dropout_prob)
         
         self.heads = nn.ModuleList([nn.Linear(256, d) for _ in range(no_heads)])
