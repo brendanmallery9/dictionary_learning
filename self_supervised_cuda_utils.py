@@ -6,13 +6,6 @@ import random
 import time
 import torch
 from torch.utils.data import Dataset, DataLoader, DistributedSampler
-from torchvision import transforms, utils
-from sklearn.metrics import confusion_matrix
-from scipy import stats, linalg
-from sklearn.metrics.pairwise import euclidean_distances
-from scipy.optimize import fsolve, least_squares, minimize, curve_fit
-import cvxpy as cp
-import scipy as sp
 from OT_utils import *
 from joblib import Parallel, delayed
 from models.multi_head_dir.multi_head_model import *

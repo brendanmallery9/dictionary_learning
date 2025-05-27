@@ -9,11 +9,6 @@ import csv
 import datetime
 import gc
 
-import numpy as np
-import scipy as sp
-from scipy import stats, linalg, optimize
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics.pairwise import euclidean_distances
 
 import torch
 import torch.optim as optim
@@ -22,12 +17,7 @@ import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-import torchvision.transforms as transforms
-import torchvision.utils as utils
-
 import cvxpy as cp
-import qpth
-
 from joblib import Parallel, delayed
 
 from OT_utils import *
