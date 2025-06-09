@@ -10,12 +10,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from sklearn.metrics import confusion_matrix
-from scipy import stats, linalg
-from sklearn.metrics.pairwise import euclidean_distances
-from scipy.optimize import fsolve, least_squares, minimize, curve_fit
-import cvxpy as cp
-import scipy as sp
 from OT_utils import *
 from joblib import Parallel, delayed
 import pickle
