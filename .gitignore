@@ -5,12 +5,11 @@
 !OT_utils.py
 !generate_data.py
 !visualizations.py
-!self_supervised_run_script.py
 !models
 !models/**
-!self_supervised_training.py
-!self_supervised_cuda_utils.py
-!self_supervised_cuda_script.py
+!multi_head_training_script.py
+!multi_head_utils_mps.py
+!claude_solution.py
 !datasets
-!datasets/tensor_data
-!datasets/tensor_data/**
+!datasets/fixed_base_tensor_data
+!datasets/fixed_base_tensor_data/**
