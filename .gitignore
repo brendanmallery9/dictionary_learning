@@ -5,7 +5,6 @@
 !OT_utils.py
 !generate_data.py
 !visualizations.py
-!self_supervised_run_script.py
 !models
 !models/**
 !multi_head_training_script.py
