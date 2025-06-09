@@ -498,58 +498,68 @@ class FatFiveLayer_Net_Multihead_Deep_Split(nn.Module):
 '''
 
 
-class SixLayer_Net_Multihead(nn.Module):
-    def __init__(self, d, no_heads, dropout_prob,base_supp_size):
-        super(SixLayer_Net_Multihead, self).__init__()
+class SixLayer_Net_Multihead_BatchNorm(nn.Module):
+    def __init__(self, d, no_heads, dropout_prob):
+        super(SixLayer_Net_Multihead_BatchNorm, self).__init__()
 
         self.no_heads = no_heads
-        self.base_supp_size=base_supp_size
         
         self.layer1 = nn.Linear(d, 256)
-        self.bn1 = nn.BatchNorm1d(256)
+        
+        self.bn1 = nn.BatchNorm1d(400)
         self.dropout1 = nn.Dropout(p=dropout_prob)
         
-        self.layer2 = nn.Linear(256, 1024)
-        self.bn2 = nn.BatchNorm1d(1024)
+        self.layer2 = nn.Linear(256, 512)
+        self.bn2 = nn.BatchNorm1d(400)
         self.dropout2 = nn.Dropout(p=dropout_prob)
 
-        self.layer3 = nn.Linear(1024, 1024)
-        self.bn3 = nn.BatchNorm1d(1024)
+        self.layer3 = nn.Linear(512, 1024)
+        self.bn3 = nn.BatchNorm1d(400)
         self.dropout3 = nn.Dropout(p=dropout_prob)
 
-        self.layer4 = nn.Linear(1024, 512)
-        self.bn4 = nn.BatchNorm1d(512)
+        self.layer4 = nn.Linear(1024, 1024)
+        self.bn4 = nn.BatchNorm1d(400)
         self.dropout4 = nn.Dropout(p=dropout_prob)
 
-        self.layer5 = nn.Linear(512, 256)
-        self.bn5 = nn.BatchNorm1d(256)
+        self.layer5 = nn.Linear(1024, 1024)
+        self.bn5 = nn.BatchNorm1d(400)
         self.dropout5 = nn.Dropout(p=dropout_prob)
         
-        self.heads = nn.ModuleList([nn.Linear(256, d) for _ in range(no_heads)])
+        self.heads = nn.ModuleList([nn.Linear(1024, d) for _ in range(no_heads)])
         self.register_buffer("head_mask", torch.ones(no_heads))
 
     def forward(self, x):
         x = self.layer1(x)
+        x = x.permute(1, 0)
         x = self.bn1(x)
+        x = x.permute(1, 0)
         x = torch.relu(x)
         x = self.dropout1(x)
         x = self.layer2(x)
+        x = x.permute(1, 0)
         x = self.bn2(x)
+        x = x.permute(1, 0)
         x = torch.relu(x)
         x = self.dropout2(x)
         
         x = self.layer3(x)
+        x = x.permute(1, 0)
         x = self.bn3(x)
+        x = x.permute(1, 0)
         x = torch.relu(x)
         x = self.dropout3(x)
 
         x = self.layer4(x)
+        x = x.permute(1, 0)
         x = self.bn4(x)
+        x = x.permute(1, 0)
         x = torch.relu(x)
         x = self.dropout4(x)
 
         x = self.layer5(x)
+        x = x.permute(1, 0)
         x = self.bn5(x)
+        x = x.permute(1, 0)
         x = torch.relu(x)
         x = self.dropout5(x)
         outputs = []
@@ -627,5 +637,361 @@ class SixLayer_Net_Multihead(nn.Module):
                 nn.init.zeros_(head.bias)
                 
         # Reset the head mask to all ones (all heads active)
+        with torch.no_grad():
+            self.head_mask.fill_(1)
+
+
+class SixLayer_Net_Multihead_LayerNorm(nn.Module):
+    def __init__(self, d, no_heads, dropout_prob):
+        super(SixLayer_Net_Multihead_LayerNorm, self).__init__()
+
+        self.no_heads = no_heads
+        
+        self.layer1 = nn.Linear(d, 256)
+        self.ln1 = nn.LayerNorm(256)
+        self.dropout1 = nn.Dropout(p=dropout_prob)
+        
+        self.layer2 = nn.Linear(256, 1024)
+        self.ln2 = nn.LayerNorm(1024)
+        self.dropout2 = nn.Dropout(p=dropout_prob)
+
+        self.layer3 = nn.Linear(1024, 1024)
+        self.ln3 = nn.LayerNorm(1024)
+        self.dropout3 = nn.Dropout(p=dropout_prob)
+
+        self.layer4 = nn.Linear(1024, 512)
+        self.ln4 = nn.LayerNorm(512)
+        self.dropout4 = nn.Dropout(p=dropout_prob)
+
+        self.layer5 = nn.Linear(512, 256)
+        self.ln5 = nn.LayerNorm(256)
+        self.dropout5 = nn.Dropout(p=dropout_prob)
+        
+        self.heads = nn.ModuleList([nn.Linear(256, d) for _ in range(no_heads)])
+        self.register_buffer("head_mask", torch.ones(no_heads))
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.ln1(x)
+        x = torch.relu(x)
+        x = self.dropout1(x)
+
+        x = self.layer2(x)
+        x = self.ln2(x)
+        x = torch.relu(x)
+        x = self.dropout2(x)
+        
+        x = self.layer3(x)
+        x = self.ln3(x)
+        x = torch.relu(x)
+        x = self.dropout3(x)
+
+        x = self.layer4(x)
+        x = self.ln4(x)
+        x = torch.relu(x)
+        x = self.dropout4(x)
+
+        x = self.layer5(x)
+        x = self.ln5(x)
+        x = torch.relu(x)
+        x = self.dropout5(x)
+
+        outputs = []
+        for i, head in enumerate(self.heads):
+            head_output = head(x) * self.head_mask[i]
+            outputs.append(head_output)
+
+        outputs = torch.stack(outputs, dim=1)
+        return outputs
+
+    def freeze_heads(self, head_indices):
+        with torch.no_grad():
+            for idx in head_indices:
+                if 0 <= idx < self.no_heads:
+                    self.head_mask[idx] = 0
+
+    def unfreeze_heads(self, head_indices=None):
+        with torch.no_grad():
+            if head_indices is None:
+                self.head_mask.fill_(1)
+            else:
+                for idx in head_indices:
+                    if 0 <= idx < self.no_heads:
+                        self.head_mask[idx] = 1
+
+    def get_frozen_status(self):
+        return [(mask == 0).item() for mask in self.head_mask]
+
+    def reset_parameters(self):
+        torch.manual_seed(42)
+        nn.init.xavier_uniform_(self.layer1.weight)
+        nn.init.zeros_(self.layer1.bias)
+        
+        nn.init.xavier_uniform_(self.layer2.weight)
+        nn.init.zeros_(self.layer2.bias)
+
+        nn.init.xavier_uniform_(self.layer3.weight)
+        nn.init.zeros_(self.layer3.bias)
+
+        nn.init.xavier_uniform_(self.layer4.weight)
+        nn.init.zeros_(self.layer4.bias)
+
+        nn.init.xavier_uniform_(self.layer5.weight)
+        nn.init.zeros_(self.layer5.bias)
+        
+        for head in self.heads:
+            nn.init.xavier_uniform_(head.weight)
+            nn.init.zeros_(head.bias)
+        
+        with torch.no_grad():
+            self.head_mask.fill_(1)
+
+
+#The permutations applied in the forward pass are to correctly apply the BatchNorm layer to average over the support dimension (you should think about this more)
+class SixLayer_Net_Multihead_BatchNorm(nn.Module):
+    def __init__(self, d, no_heads, dropout_prob):
+        super(SixLayer_Net_Multihead_BatchNorm, self).__init__()
+
+        self.no_heads = no_heads
+        
+        self.layer1 = nn.Linear(d, 256)
+        
+        self.bn1 = nn.BatchNorm1d(400)
+        self.dropout1 = nn.Dropout(p=dropout_prob)
+        
+        self.layer2 = nn.Linear(256, 512)
+        self.bn2 = nn.BatchNorm1d(400)
+        self.dropout2 = nn.Dropout(p=dropout_prob)
+
+        self.layer3 = nn.Linear(512, 1024)
+        self.bn3 = nn.BatchNorm1d(400)
+        self.dropout3 = nn.Dropout(p=dropout_prob)
+
+        self.layer4 = nn.Linear(1024, 1024)
+        self.bn4 = nn.BatchNorm1d(400)
+        self.dropout4 = nn.Dropout(p=dropout_prob)
+
+        self.layer5 = nn.Linear(1024, 1024)
+        self.bn5 = nn.BatchNorm1d(400)
+        self.dropout5 = nn.Dropout(p=dropout_prob)
+        
+        self.heads = nn.ModuleList([nn.Linear(1024, d) for _ in range(no_heads)])
+        self.register_buffer("head_mask", torch.ones(no_heads))
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = x.permute(1, 0)
+        x = self.bn1(x)
+        x = x.permute(1, 0)
+        x = torch.relu(x)
+        x = self.dropout1(x)
+        x = self.layer2(x)
+        x = x.permute(1, 0)
+        x = self.bn2(x)
+        x = x.permute(1, 0)
+        x = torch.relu(x)
+        x = self.dropout2(x)
+        
+        x = self.layer3(x)
+        x = x.permute(1, 0)
+        x = self.bn3(x)
+        x = x.permute(1, 0)
+        x = torch.relu(x)
+        x = self.dropout3(x)
+
+        x = self.layer4(x)
+        x = x.permute(1, 0)
+        x = self.bn4(x)
+        x = x.permute(1, 0)
+        x = torch.relu(x)
+        x = self.dropout4(x)
+
+        x = self.layer5(x)
+        x = x.permute(1, 0)
+        x = self.bn5(x)
+        x = x.permute(1, 0)
+        x = torch.relu(x)
+        x = self.dropout5(x)
+        outputs = []
+        for i, head in enumerate(self.heads):
+            head_output = head(x) * self.head_mask[i]
+            outputs.append(head_output)
+
+        outputs = torch.stack(outputs, dim=1)
+        return outputs
+
+
+    def freeze_heads(self, head_indices):
+        """
+        Freeze specific heads by setting their mask values to 0.
+        
+        Args:
+            head_indices: List of indices of heads to freeze
+        """
+        with torch.no_grad():
+            for idx in head_indices:
+                if 0 <= idx < self.no_heads:
+                    self.head_mask[idx] = 0
+    
+    def unfreeze_heads(self, head_indices=None):
+        """
+        Unfreeze specific heads by setting their mask values to 1.
+        If head_indices is None, unfreeze all heads.
+        
+        Args:
+            head_indices: List of indices of heads to unfreeze, or None to unfreeze all
+        """
+        with torch.no_grad():
+            if head_indices is None:
+                # Unfreeze all heads
+                self.head_mask.fill_(1)
+            else:
+                for idx in head_indices:
+                    if 0 <= idx < self.no_heads:
+                        self.head_mask[idx] = 1
+    
+    def get_frozen_status(self):
+        """
+        Return a list of booleans indicating which heads are frozen.
+        
+        Returns:
+            List of booleans where True means the head is frozen
+        """
+        return [(mask == 0).item() for mask in self.head_mask]
+    
+
+    
+    def reset_parameters(self):
+        """Reset parameters with a fixed random seed."""
+        torch.manual_seed(42)  # Set seed for reproducibility
+        
+        # Initialize layer1
+        nn.init.xavier_uniform_(self.layer1.weight)
+        if self.layer1.bias is not None:
+            nn.init.zeros_(self.layer1.bias)
+        
+        # Initialize layer2
+        nn.init.xavier_uniform_(self.layer2.weight)
+        if self.layer2.bias is not None:
+            nn.init.zeros_(self.layer2.bias)
+        
+        # Initialize layer3
+        nn.init.xavier_uniform_(self.layer3.weight)
+        if self.layer3.bias is not None:
+            nn.init.zeros_(self.layer3.bias)
+        
+        # Initialize each head in the heads ModuleList
+        for head in self.heads:
+            nn.init.xavier_uniform_(head.weight)
+            if head.bias is not None:
+                nn.init.zeros_(head.bias)
+                
+        # Reset the head mask to all ones (all heads active)
+        with torch.no_grad():
+            self.head_mask.fill_(1)
+
+
+class SixLayer_Net_Multihead_LayerNorm(nn.Module):
+    def __init__(self, d, no_heads, dropout_prob):
+        super(SixLayer_Net_Multihead_LayerNorm, self).__init__()
+
+        self.no_heads = no_heads
+        
+        self.layer1 = nn.Linear(d, 256)
+        self.ln1 = nn.LayerNorm(256)
+        self.dropout1 = nn.Dropout(p=dropout_prob)
+        
+        self.layer2 = nn.Linear(256, 1024)
+        self.ln2 = nn.LayerNorm(1024)
+        self.dropout2 = nn.Dropout(p=dropout_prob)
+
+        self.layer3 = nn.Linear(1024, 1024)
+        self.ln3 = nn.LayerNorm(1024)
+        self.dropout3 = nn.Dropout(p=dropout_prob)
+
+        self.layer4 = nn.Linear(1024, 512)
+        self.ln4 = nn.LayerNorm(512)
+        self.dropout4 = nn.Dropout(p=dropout_prob)
+
+        self.layer5 = nn.Linear(512, 256)
+        self.ln5 = nn.LayerNorm(256)
+        self.dropout5 = nn.Dropout(p=dropout_prob)
+        
+        self.heads = nn.ModuleList([nn.Linear(256, d) for _ in range(no_heads)])
+        self.register_buffer("head_mask", torch.ones(no_heads))
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.ln1(x)
+        x = torch.relu(x)
+        x = self.dropout1(x)
+
+        x = self.layer2(x)
+        x = self.ln2(x)
+        x = torch.relu(x)
+        x = self.dropout2(x)
+        
+        x = self.layer3(x)
+        x = self.ln3(x)
+        x = torch.relu(x)
+        x = self.dropout3(x)
+
+        x = self.layer4(x)
+        x = self.ln4(x)
+        x = torch.relu(x)
+        x = self.dropout4(x)
+
+        x = self.layer5(x)
+        x = self.ln5(x)
+        x = torch.relu(x)
+        x = self.dropout5(x)
+
+        outputs = []
+        for i, head in enumerate(self.heads):
+            head_output = head(x) * self.head_mask[i]
+            outputs.append(head_output)
+
+        outputs = torch.stack(outputs, dim=1)
+        return outputs
+
+    def freeze_heads(self, head_indices):
+        with torch.no_grad():
+            for idx in head_indices:
+                if 0 <= idx < self.no_heads:
+                    self.head_mask[idx] = 0
+
+    def unfreeze_heads(self, head_indices=None):
+        with torch.no_grad():
+            if head_indices is None:
+                self.head_mask.fill_(1)
+            else:
+                for idx in head_indices:
+                    if 0 <= idx < self.no_heads:
+                        self.head_mask[idx] = 1
+
+    def get_frozen_status(self):
+        return [(mask == 0).item() for mask in self.head_mask]
+
+    def reset_parameters(self):
+        torch.manual_seed(42)
+        nn.init.xavier_uniform_(self.layer1.weight)
+        nn.init.zeros_(self.layer1.bias)
+        
+        nn.init.xavier_uniform_(self.layer2.weight)
+        nn.init.zeros_(self.layer2.bias)
+
+        nn.init.xavier_uniform_(self.layer3.weight)
+        nn.init.zeros_(self.layer3.bias)
+
+        nn.init.xavier_uniform_(self.layer4.weight)
+        nn.init.zeros_(self.layer4.bias)
+
+        nn.init.xavier_uniform_(self.layer5.weight)
+        nn.init.zeros_(self.layer5.bias)
+        
+        for head in self.heads:
+            nn.init.xavier_uniform_(head.weight)
+            nn.init.zeros_(head.bias)
+        
         with torch.no_grad():
             self.head_mask.fill_(1)

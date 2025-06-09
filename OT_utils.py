@@ -171,6 +171,23 @@ def multi_solve_for_coefficients(model,base_points,mapping,QP_reg):
     coefficients,min_value=solve_QP(QP_mat)
     return coefficients,min_value
 
+def multi_solve_for_coefficients(model,base_points,mapping,QP_reg,):
+    #base_points: (supp_size,dim)
+    #mapping: (supp_size,dim)
+    with torch.no_grad():
+        output=model(base_points) #output: (supp_size,no_heads,dim)
+    no_heads=output.shape[1]
+    supp_size=base_points.shape[0]
+    map_array=[]
+    for i in range(no_heads):
+        tensor_map=output[:,i,:]-mapping #tensor_map: (supp_size,dim)
+        map_array.append(tensor_map.cpu().detach().numpy())
+    #build and solve QP
+    QP_mat=build_QP(map_array,supp_size)+QP_reg*np.eye(len(map_array))
+    coefficients,min_value=solve_QP(QP_mat)
+    return coefficients,min_value
+
+
 class reg_schedule:
     def __init__(self, base_value, scale_factor,min_i):
         # Example parameters to define the schedule
@@ -183,6 +200,7 @@ class reg_schedule:
             return self.base_value
         else:
             return self.base_value /((i-self.min_i)*self.scale_factor)
+
 
 
 #def evaluate_coefficients(data_list,model):
