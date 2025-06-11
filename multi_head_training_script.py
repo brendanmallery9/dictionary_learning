@@ -97,8 +97,8 @@ def main():
     dtype = args.dtype
     model_class = SixLayer_Net_Multihead_BatchNorm
     model_init_args = (dim, no_heads, dropout_prob)
-    model_state_dict=None
-    #model_state_dict = 'training_runs/2025-06-06_runs/Trial_1749244308.7886/multi_head_model_18000_drop_1.pt'
+    #model_state_dict=None
+    model_state_dict = 'training_runs/2025-06-09_runs/Trial_1749501917.9238/multi_head_model_24000.pt'
 
     try:
         if args.base_logic == 'VaryBase':
@@ -174,7 +174,7 @@ if __name__ == "__main__":
 '''
 python3 multi_head_training_script.py \
   --batch_size 256 \
-  --outer_epoch_schedule 10 0 0 10 0 0 10\
+  --outer_epoch_schedule 5 5 5\
   --inner_epochs_1 5 \
   --inner_epochs_2 10 \
   --lr 2e-4 \
@@ -187,7 +187,7 @@ python3 multi_head_training_script.py \
   --base_logic 'FixedBase' \
   --sparsity_reg 10 \
   --warm_start_length 2\
-  --comment 'Trying 013468 dataset, 10 heads,'
+  --comment 'Resuming 013468 dataset training, 10 heads,'
 '''
 
 '''
