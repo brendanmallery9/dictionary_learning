@@ -89,43 +89,6 @@ class MappingCoeffTensors(Dataset):
     #    random.shuffle(self.data)
 
 
-def solve_for_coeffs_cvxpy_v2(model,base_point_tensor,batch_data,QP_reg,device,base_logic):
-    #if vary_base==True:
-    #           base_point_tensor: (batch_size,supp_size,dim)
-    #else:
-    #           base_point_tensor: (1,supp_size,dim)
-    #batch_data: (batch_size,supp_size,dim)
-    with torch.no_grad():
-        output=model(base_point_tensor).detach().cpu()
-    no_heads=model.no_heads
-    batch_size = batch_data.shape[0]
-    displacement_tensor=[]
-    for i in range(no_heads):
-            if base_logic=='VaryBase':
-                tensor_map=output[:,i,:,:]-batch_data
-            else:
-                #To deal with batchnorm bullshit, doing this:
-                tensor_map=output[:,i,:].unsqueeze(0)-batch_data
-                #tensor_map=output[:,i,:,:]-batch_data
-            displacement_tensor.append(tensor_map)
-    displacement_tensor=torch.stack(displacement_tensor,dim=1) #displacement_tensor: (batch_size,no_heads,supp_size,dim)
-    QP = build_QP_v2(displacement_tensor)
-    QP += QP_reg * torch.eye(no_heads).expand(batch_size, no_heads, no_heads)
-    QP = QP.to('cpu')
-    v_solutions = []
-    for b in range(batch_size):
-        Q = QP[b].numpy()  # Do not enforce symmetry
-        v = cp.Variable(no_heads)
-        objective = cp.Minimize(0.5 * cp.quad_form(v, Q))
-        constraints = [v >= 0, cp.sum(v) == 1]
-        problem = cp.Problem(objective, constraints)
-        problem.solve()
-        v_solutions.append(v.value)
-    # Convert back to torch tensor on the correct device
-    v_tensor = torch.tensor(np.array(v_solutions), dtype=torch.float32).to(device)  # (batch_size, no_heads)
-    return v_tensor
-
-
 def adaptive_LASSO_loss(lambda_batch, weights, batch_data, model_output, reg):
     # lambda_batch: (batch_size, no_heads)
     # weights: (batch_size, no_heads)
@@ -617,4 +580,42 @@ def multi_head_train_cuda(model, dataloader, outer_epoch_schedule, inner_epochs_
 
     torch.save(model.state_dict(), '{}/Trial_{:.4f}/multi_head_model_{}.pt'.format(filename,time_now,counter))
     return f'{filename}/Trial_{time_now:.4f}',inner_loss
+'''
+
+'''
+def solve_for_coeffs_cvxpy_v2(model,base_point_tensor,batch_data,QP_reg,device,base_logic):
+    #if vary_base==True:
+    #           base_point_tensor: (batch_size,supp_size,dim)
+    #else:
+    #           base_point_tensor: (1,supp_size,dim)
+    #batch_data: (batch_size,supp_size,dim)
+    with torch.no_grad():
+        output=model(base_point_tensor).detach().cpu()
+    no_heads=model.no_heads
+    batch_size = batch_data.shape[0]
+    displacement_tensor=[]
+    for i in range(no_heads):
+            if base_logic=='VaryBase':
+                tensor_map=output[:,i,:,:]-batch_data
+            else:
+                #To deal with batchnorm bullshit, doing this:
+                tensor_map=output[:,i,:].unsqueeze(0)-batch_data
+                #tensor_map=output[:,i,:,:]-batch_data
+            displacement_tensor.append(tensor_map)
+    displacement_tensor=torch.stack(displacement_tensor,dim=1) #displacement_tensor: (batch_size,no_heads,supp_size,dim)
+    QP = build_QP_v2(displacement_tensor)
+    QP += QP_reg * torch.eye(no_heads).expand(batch_size, no_heads, no_heads)
+    QP = QP.to('cpu')
+    v_solutions = []
+    for b in range(batch_size):
+        Q = QP[b].numpy()  # Do not enforce symmetry
+        v = cp.Variable(no_heads)
+        objective = cp.Minimize(0.5 * cp.quad_form(v, Q))
+        constraints = [v >= 0, cp.sum(v) == 1]
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        v_solutions.append(v.value)
+    # Convert back to torch tensor on the correct device
+    v_tensor = torch.tensor(np.array(v_solutions), dtype=torch.float32).to(device)  # (batch_size, no_heads)
+    return v_tensor
 '''
