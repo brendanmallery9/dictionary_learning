@@ -40,6 +40,13 @@ from multi_head_utils_mps import *
 
 import argparse
 
+seed=42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+torch.use_deterministic_algorithms(True)
 
 def save_args(args, loss,directory):
     os.makedirs(directory, exist_ok=True)
@@ -125,10 +132,11 @@ def main():
     if model_state_dict is not None:
         model.load_state_dict(torch.load(model_state_dict, map_location="mps"))
     model = model.to("mps")
+    generator = torch.Generator().manual_seed(seed)
 
-    full_dir_name, inner_loss = multi_head_train_cuda(
+    full_dir_name, inner_loss = multi_head_train_mps(
         model=model,
-        dataloader=DataLoader(dataset, batch_size=args.batch_size, shuffle=True),
+        dataloader=DataLoader(dataset, batch_size=args.batch_size, shuffle=True,generator=generator),
         outer_epoch_schedule=args.outer_epoch_schedule,
         inner_epochs_pair=inner_epochs_pair,
         QP_reg_schedule=QP_reg_schedule,
@@ -174,20 +182,19 @@ if __name__ == "__main__":
 '''
 python3 multi_head_training_script.py \
   --batch_size 256 \
-  --outer_epoch_schedule 40 0 0 0 0 0 0 0 30\
-  --inner_epochs_1 1 \
-  --inner_epochs_2 5 \
+  --outer_epoch_schedule 1 0 0 0 0 0 0 0 1\
+  --inner_epochs_1 2 \
+  --inner_epochs_2 10 \
   --lr 2e-4 \
-  --save_increment 1000 \
+  --save_increment 2000 \
   --dtype MNIST \
   --lambda_reg 0.1 \
   --variance_threshold_scaling 1.2 \
   --base_points 'datasets/fixed_base_tensor_data/base_point_tensor.pt' \
   --mapping_path 'datasets/fixed_base_tensor_data/pure_013468_mappings.pt' \
   --base_logic 'FixedBase' \
-  --sparsity_reg 50 \
+  --sparsity_reg 10 \
   --warm_start_length 2\
-  --comment 'lowering inner epoch 1'
 '''
 
 '''

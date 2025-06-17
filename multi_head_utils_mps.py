@@ -19,10 +19,15 @@ from models.multi_head_dir.multi_head_training import *
 from visualizations import *
 from generate_data import *
 import torch.optim as optim
-import qpth
 from torch.amp import autocast
 from scipy.optimize import minimize
 from claude_solution import *
+
+#testing stepsize schedulers
+from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 
 
 class CustomDataset(Dataset):
@@ -160,7 +165,7 @@ def optimization_step_mps(displacement_tensor, output_tensor,coefficient_tensor,
     optimizer.step()
     return loss,vari_max
 
-def optimization_step_nosimplex_mps(mapping_batch, output_tensor,coefficient_tensor, optimizer, lambda_reg,variance_threshold, device):
+def optimization_step_nosimplex_mps(mapping_batch, output_tensor,coefficient_tensor, optimizer,scheduler, lambda_reg,variance_threshold, device):
     # output_tensor: (supp_size,no_heads,dim)
     # mapping batch: (batch_size,support_size,dim)    
     # coefficient_tensor: (batch_size, no_heads)
@@ -210,18 +215,22 @@ def optimization_step_nosimplex_mps(mapping_batch, output_tensor,coefficient_ten
     loss = loss_over_batches.mean() + reg_loss + center_loss
     loss.backward()
     optimizer.step()
+    if scheduler!=None:
+        scheduler.step()
+        for param_group in optimizer.param_groups:
+            print(param_group['lr'])
     return loss,vari_max
 
 
 
-def multi_head_train_cuda(model, dataloader, outer_epoch_schedule, inner_epochs_pair,
+
+
+def multi_head_train_mps(model, dataloader, outer_epoch_schedule, inner_epochs_pair,
                                           QP_reg_schedule, batch_size,
                                           save_increment, dtype, filename, lambda_reg,variance_threshold_scaling, lr,base_logic,sparsity_reg,device,warm_start_length):
     start_time=time.time()
     model.train()
     print(model)
-    print('ELLO',model.no_heads)
-
     #model: multi head neural net 
     #dataset: list of semi_supervised_embedded_data objects
     #outer_epochs: int
@@ -251,7 +260,6 @@ def multi_head_train_cuda(model, dataloader, outer_epoch_schedule, inner_epochs_
     #diff_tensor: computes the difference vector between each head output point and the mean
     disp_tensor = example_mapping_data - mean_tensor.unsqueeze(1)  # (batch_size, supp_size, dim)
     base_supp_size=example_mapping_data.shape[1]
-
     #sq_norm: computes the squared euclidean distance between each head output point and the mean (norm of diff_tensor)
     sq_norm = (disp_tensor ** 2).sum(dim=-1)  # (batch_size, supp_size, no_heads)
     print('Sample Variance',sq_norm)
@@ -259,22 +267,72 @@ def multi_head_train_cuda(model, dataloader, outer_epoch_schedule, inner_epochs_
     sample_variance = sq_norm.mean(dim=1)  # (batch_size, no_heads)
     sample_variance=sample_variance.mean()
     for outer_epoch_index, outer_epoch_batch in enumerate(outer_epoch_schedule):
-        if outer_epoch_index>0 and outer_epoch_index<len(outer_epoch_schedule)-1:
+
+
+
+
+
+
+
+
+
+        if outer_epoch_index>0 and outer_epoch_index<len(outer_epoch_schedule)-1 and outer_epoch_batch>0:
             save_path = f'{filename}/Trial_{time_now:.4f}/multi_head_model_{counter}_drop_{outer_epoch_index}.pt'
             torch.save(model.state_dict(), save_path)
             print(f"Model saved at counter {counter}")
+
+
+
+
+
+
+
+
+
+
+        #TRYING TO KEEP THE OPTIMIZER FIXED
+
         if outer_epoch_index==0:
             optimizer = optim.AdamW(model.parameters(), lr=3*lr,weight_decay=1e-4)
+
+            #scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            #        optimizer,
+            #        max_lr=3*lr,
+            ##        total_steps=inner_epochs_pair[0]*inner_epochs_pair[1]*len(dataloader)*outer_epoch_batch,
+             #       pct_start=0.3,
+             #       anneal_strategy='cos')
+            scheduler=None
+
+            inner_loss,counter=alternating_minimization(model, dataloader,optimizer,scheduler, outer_epoch_batch,outer_epoch_index,
+                                            inner_epochs_pair,
+                                            QP_reg_schedule,
+                                            save_increment, filename, 
+                                            lambda_reg,variance_threshold_scaling, sample_variance,
+                                            base_logic,sparsity_reg,device,time_now,counter,warm_start_length)
         else:
-            optimizer = optim.AdamW(model.parameters(), lr=lr/(2*outer_epoch_index),weight_decay=1e-4)
-        inner_loss,counter=alternating_minimization(model, dataloader,optimizer, outer_epoch_batch,outer_epoch_index,
-                                                    inner_epochs_pair,
-                                                    QP_reg_schedule,
-                                                    save_increment, filename, 
-                                                    lambda_reg,variance_threshold_scaling, sample_variance,
-                                                    base_logic,sparsity_reg,device,time_now,counter,warm_start_length)
+        #else:
+            if outer_epoch_batch>0:
+                total_epochs=inner_epochs_pair[0]*inner_epochs_pair[1]*len(dataloader)*outer_epoch_batch
+                optimizer = optim.AdamW(model.parameters(), lr=lr,weight_decay=1e-4)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                            optimizer,
+                            T_max=total_epochs)
+
+               # scheduler = torch.optim. slr_scheduler.OneCycleLR(
+               #         optimizer,
+               #         max_lr=3*lr,
+               #         total_steps=total_epochs,
+               #         pct_start=0.3,
+               #         anneal_strategy='cos')
+            
+                inner_loss,counter=alternating_minimization(model, dataloader,optimizer,scheduler, outer_epoch_batch,outer_epoch_index,
+                                                        inner_epochs_pair,
+                                                        QP_reg_schedule,
+                                                        save_increment, filename, 
+                                                        lambda_reg,variance_threshold_scaling, sample_variance,
+                                                        base_logic,sparsity_reg,device,time_now,counter,0)
     end_time=time.time()
-    save_trial('self_supervised.csv',
+    save_trial('training_list.csv',
                dtype=dtype,
                index=time_now,
                end_loss=inner_loss,
@@ -293,7 +351,7 @@ def multi_head_train_cuda(model, dataloader, outer_epoch_schedule, inner_epochs_
     return f'{filename}/Trial_{time_now:.4f}',inner_loss
 
 
-def alternating_minimization(model, dataloader,optimizer, outer_epoch_batch,outer_epoch_idx, inner_epochs_pair,
+def alternating_minimization(model, dataloader,optimizer,scheduler, outer_epoch_batch,outer_epoch_idx, inner_epochs_pair,
                                           QP_reg_schedule,
                                           save_increment, filename, 
                                           lambda_reg,variance_threshold_scaling, sample_variance,
@@ -386,6 +444,7 @@ def alternating_minimization(model, dataloader,optimizer, outer_epoch_batch,oute
                                             output,
                                             coefficients_batch,
                                             optimizer,
+                                            scheduler,
                                             lambda_reg,
                                             variance_threshold_scaling*sample_variance,
                                             device)
