@@ -267,29 +267,10 @@ def multi_head_train_mps(model, dataloader, outer_epoch_schedule, inner_epochs_p
     sample_variance = sq_norm.mean(dim=1)  # (batch_size, no_heads)
     sample_variance=sample_variance.mean()
     for outer_epoch_index, outer_epoch_batch in enumerate(outer_epoch_schedule):
-
-
-
-
-
-
-
-
-
         if outer_epoch_index>0 and outer_epoch_index<len(outer_epoch_schedule)-1 and outer_epoch_batch>0:
             save_path = f'{filename}/Trial_{time_now:.4f}/multi_head_model_{counter}_drop_{outer_epoch_index}.pt'
             torch.save(model.state_dict(), save_path)
             print(f"Model saved at counter {counter}")
-
-
-
-
-
-
-
-
-
-
         #TRYING TO KEEP THE OPTIMIZER FIXED
 
         if outer_epoch_index==0:
